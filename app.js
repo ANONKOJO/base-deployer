@@ -11,7 +11,7 @@
  */
 
 // ─── Config ──────────────────────────────────────────────────────────────
-const FEE_RECIPIENT = "0xYOUR_WALLET_ADDRESS_HERE"; // ← your wallet
+const FEE_RECIPIENT = "0x0e87A7Ccb9a5FFF3F9Ba7546db1ea356CAD0C510"; // ← your wallet
 const FEE_ETH       = "0.00001";                     // ← platform fee (all goes to you)
 
 // ─── Compile via backend ──────────────────────────────────────────────────
