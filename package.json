@@ -1,0 +1,8 @@
+{
+  "name": "base-deployer",
+  "version": "1.0.0",
+  "description": "Deploy smart contracts on Base — no setup needed",
+  "dependencies": {
+    "solc": "0.8.20"
+  }
+}

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Base Deployer</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.2/ethers.umd.min.js"></script>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── Header ── -->
+  <div class="topbar">
+    <div class="logo">
+      <!-- Official Base "b" logo -->
+      <svg width="32" height="32" viewBox="0 0 111 111" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="55.5" cy="55.5" r="55.5" fill="#0052FF"/>
+        <path d="M55.608 88.184C72.916 88.184 86.947 74.204 86.947 56.96C86.947 39.716 72.916 25.736 55.608 25.736C39.244 25.736 25.763 38.32 24.327 54.296H64.318V59.624H24.327C25.763 75.6 39.244 88.184 55.608 88.184Z" fill="white"/>
+      </svg>
+      <span class="logo-text">Base <span>Deployer</span></span>
+    </div>
+    <div class="wallet-pill" id="wallet-pill" onclick="connectWallet()">
+      <div class="dot" id="wallet-dot"></div>
+      <span id="wallet-label">Connect Wallet</span>
+    </div>
+  </div>
+
+  <!-- ── No wallet warning ── -->
+  <div class="alert alert-danger" id="no-wallet" style="display:none">
+    No browser wallet detected.
+    Install <a href="https://metamask.io" target="_blank">MetaMask</a> and refresh.
+  </div>
+
+  <!-- ── Network tabs ── -->
+  <div class="net-tabs">
+    <button class="net-tab active" onclick="selectNet(this,'Base Mainnet',8453,'https://mainnet.base.org','https://basescan.org')">Base Mainnet</button>
+    <button class="net-tab" onclick="selectNet(this,'Base Sepolia',84532,'https://sepolia.base.org','https://sepolia.basescan.org')">Base Sepolia <span class="badge">testnet</span></button>
+    <button class="net-tab" onclick="selectNet(this,'Hardhat',31337,'http://localhost:8545','')">Hardhat <span class="badge">local</span></button>
+  </div>
+
+  <!-- ── Step 1: Pick a contract ── -->
+  <div class="step-block" id="block-pick">
+    <div class="step-label"><span class="step-num">1</span> What do you want to deploy?</div>
+
+    <div class="template-grid">
+
+      <div class="template-card" onclick="pickTemplate('token')" id="card-token">
+        <div class="card-tag">ERC-20</div>
+        <div class="card-title">Coin / Token</div>
+        <div class="card-desc">Create your own cryptocurrency. Set the name, ticker, and total supply.</div>
+      </div>
+
+      <div class="template-card" onclick="pickTemplate('nft')" id="card-nft">
+        <div class="card-tag">ERC-721</div>
+        <div class="card-title">NFT Collection</div>
+        <div class="card-desc">Launch an NFT collection. Set the name, symbol, and a metadata link.</div>
+      </div>
+
+      <div class="template-card" onclick="pickTemplate('storage')" id="card-storage">
+        <div class="card-tag">Beginner</div>
+        <div class="card-title">Simple Storage</div>
+        <div class="card-desc">A basic contract that stores a single value on-chain. Good for learning.</div>
+      </div>
+
+      <div class="template-card" onclick="pickTemplate('custom')" id="card-custom">
+        <div class="card-tag">Advanced</div>
+        <div class="card-title">Custom Contract</div>
+        <div class="card-desc">Already compiled your own contract? Paste the bytecode and ABI here.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Step 2: Fill in details ── -->
+  <div class="step-block hidden" id="block-form">
+    <div class="step-label">
+      <button class="back-btn" onclick="goBack()">← Back</button>
+      <span class="step-num">2</span>
+      <span id="form-title">Fill in details</span>
+    </div>
+
+    <!-- Token form -->
+    <div class="form-section hidden" id="form-token">
+      <div class="field">
+        <label>Token Name</label>
+        <input type="text" id="token-name" placeholder="e.g. Dogecoin" />
+        <div class="hint">The full name of your token</div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Ticker Symbol</label>
+          <input type="text" id="token-symbol" placeholder="e.g. DOGE" maxlength="8" oninput="this.value=this.value.toUpperCase()" />
+          <div class="hint">3–5 characters, uppercase</div>
+        </div>
+        <div class="field">
+          <label>Decimals</label>
+          <input type="number" id="token-decimals" value="18" min="0" max="18" />
+          <div class="hint">18 is standard</div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Total Supply</label>
+        <input type="number" id="token-supply" placeholder="e.g. 1000000" min="1" />
+        <div class="hint">All tokens go to your wallet on deploy</div>
+      </div>
+    </div>
+
+    <!-- NFT form -->
+    <div class="form-section hidden" id="form-nft">
+      <div class="field">
+        <label>Collection Name</label>
+        <input type="text" id="nft-name" placeholder="e.g. Cool Cats" />
+      </div>
+      <div class="field">
+        <label>Symbol</label>
+        <input type="text" id="nft-symbol" placeholder="e.g. COOL" maxlength="8" oninput="this.value=this.value.toUpperCase()" />
+      </div>
+      <div class="field">
+        <label>Base Metadata URI</label>
+        <input type="text" id="nft-uri" placeholder="ipfs://Qm... or https://myapi.com/metadata/" />
+        <div class="hint">Where your NFT metadata lives. Each token appends its ID to this URL.</div>
+      </div>
+      <div class="field">
+        <label>Max Supply</label>
+        <input type="number" id="nft-supply" placeholder="e.g. 10000" min="1" />
+        <div class="hint">Maximum number of NFTs that can ever be minted</div>
+      </div>
+    </div>
+
+    <!-- Storage form -->
+    <div class="form-section hidden" id="form-storage">
+      <div class="alert alert-info">
+        This deploys a simple contract with a <code>store(uint256)</code> and <code>retrieve()</code> function.
+        No setup needed — just deploy and it's ready.
+      </div>
+      <div class="field">
+        <label>Initial Value <span class="optional">(optional)</span></label>
+        <input type="number" id="storage-value" placeholder="0" value="0" min="0" />
+        <div class="hint">The number stored on-chain when the contract is first deployed</div>
+      </div>
+    </div>
+
+    <!-- Custom / Advanced form -->
+    <div class="form-section hidden" id="form-custom">
+      <div class="alert alert-info">
+        Compile your contract in <a href="https://remix.ethereum.org" target="_blank">Remix</a>,
+        then copy the bytecode and ABI from the <strong>Compilation Details</strong> panel.
+      </div>
+      <div class="field">
+        <label>Compiled Bytecode</label>
+        <textarea id="custom-bytecode" rows="4" placeholder="0x6080604052..." oninput="validateBytecode(this)"></textarea>
+        <div class="hint" id="bc-hint">Must start with 0x and be a valid hex string</div>
+      </div>
+      <div class="field">
+        <label>ABI (JSON)</label>
+        <textarea id="custom-abi" rows="4" placeholder='[{"inputs":[],"type":"constructor"},...]' oninput="validateABI(this)"></textarea>
+        <div class="hint" id="abi-hint">Paste the full ABI array from your compiler output</div>
+      </div>
+
+      <!-- Constructor args (only shown if ABI has constructor inputs) -->
+      <div id="custom-args-wrap" class="hidden">
+        <label style="margin-bottom:8px">Constructor Arguments</label>
+        <div id="custom-args-list"></div>
+        <button class="add-arg-btn" onclick="addArgRow()">＋ Add argument</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 3: Deploy ── -->
+  <div class="step-block hidden" id="block-deploy">
+    <div class="step-label"><span class="step-num">3</span> Deploy</div>
+
+    <!-- Summary -->
+    <div class="summary-box" id="summary-box"></div>
+
+    <!-- Fee notice -->
+    <div class="fee-notice">
+      <span>Platform fee: <strong>0.00001 ETH</strong> — goes to you. Gas is automatic, set by the Base network.</span>
+    </div>
+
+    <button class="deploy-btn" id="deploy-btn" onclick="runDeploy()">
+      Deploy Contract
+    </button>
+  </div>
+
+  <!-- ── Result ── -->
+  <div class="result-box hidden" id="result-box">
+    <div class="result-head" id="result-head"></div>
+    <div id="result-rows"></div>
+    <div id="deploy-log"></div>
+    <button class="secondary-btn" onclick="resetAll()" style="margin-top:1rem;width:100%">Deploy another contract</button>
+  </div>
+
+</div>
+
+<script src="templates.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
