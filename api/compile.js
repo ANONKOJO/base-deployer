@@ -197,21 +197,54 @@ const CONTRACT_NAMES = {
   storage: 'SimpleStorage',
 };
 
+// ── Rate limiter (in-memory, resets on cold start) ───────────────────────
+// Allows max 10 compile requests per IP per minute.
+const MAX_REQUESTS   = 10;
+const WINDOW_MS      = 60 * 1000; // 1 minute
+const ipRequestLog   = new Map();
+
+function isRateLimited(ip) {
+  const now    = Date.now();
+  const record = ipRequestLog.get(ip) || { count: 0, start: now };
+
+  // reset window if expired
+  if (now - record.start > WINDOW_MS) {
+    record.count = 0;
+    record.start = now;
+  }
+
+  record.count++;
+  ipRequestLog.set(ip, record);
+  return record.count > MAX_REQUESTS;
+}
+
+// Max contract bytecode size — EVM hard limit is 24KB (24576 bytes)
+const MAX_BYTECODE_BYTES = 24576;
+
 // ── Handler ─────────────────────────────────────────────────────────────
 
 module.exports = async function handler(req, res) {
-  // CORS — allow your frontend to call this
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // CORS — locked to your Vercel domain only
+  const allowedOrigin = process.env.ALLOWED_ORIGIN || 'https://based-deployahh.vercel.app';
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { template } = req.body;
+  // Rate limit by IP
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 'unknown';
+  if (isRateLimited(ip)) {
+    return res.status(429).json({ error: 'Too many requests. Please wait a minute and try again.' });
+  }
 
-  if (!template || !SOURCES[template]) {
-    return res.status(400).json({ error: `Unknown template: ${template}` });
+  // Input sanitization — only accept known template strings, nothing else
+  const { template } = req.body;
+  const ALLOWED_TEMPLATES = ['token', 'nft', 'storage'];
+
+  if (!template || typeof template !== 'string' || !ALLOWED_TEMPLATES.includes(template)) {
+    return res.status(400).json({ error: 'Invalid template. Must be one of: token, nft, storage.' });
   }
 
   try {
@@ -230,7 +263,7 @@ module.exports = async function handler(req, res) {
     const outputRaw = solc.compile(input);
     const output    = JSON.parse(outputRaw);
 
-    // surface compiler errors
+    // Surface compiler errors
     const errors = (output.errors || []).filter(e => e.severity === 'error');
     if (errors.length) {
       return res.status(400).json({
@@ -248,9 +281,18 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: 'Compiler returned empty bytecode' });
     }
 
+    // Contract size check — reject if over EVM 24KB limit
+    const byteCount = bytecode.length / 2;
+    if (byteCount > MAX_BYTECODE_BYTES) {
+      return res.status(400).json({
+        error: `Contract is too large (${byteCount} bytes). EVM limit is ${MAX_BYTECODE_BYTES} bytes.`,
+      });
+    }
+
     return res.status(200).json({
-      abi:      compiled.abi,
-      bytecode: '0x' + bytecode,
+      abi:          compiled.abi,
+      bytecode:     '0x' + bytecode,
+      byteCount,
     });
 
   } catch (err) {

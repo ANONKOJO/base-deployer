@@ -11,7 +11,7 @@
  */
 
 // ─── Config ──────────────────────────────────────────────────────────────
-const FEE_RECIPIENT = "0x0e87A7Ccb9a5FFF3F9Ba7546db1ea356CAD0C510"; // ← your wallet
+const FEE_RECIPIENT = "0xYOUR_WALLET_ADDRESS_HERE"; // ← your wallet
 const FEE_ETH       = "0.00001";                     // ← platform fee (all goes to you)
 
 // ─── Compile via backend ──────────────────────────────────────────────────
@@ -283,25 +283,47 @@ async function runDeploy() {
       const compiled = await compileContract(currentTemplate);
       abi      = compiled.abi;
       bytecode = compiled.bytecode;
-      log('Compiled ✓', 'ok');
+
+      // contract size check — EVM hard limit is 24KB
+      const byteCount = compiled.byteCount || Math.floor((bytecode.length - 2) / 2);
+      if (byteCount > 24576) throw new Error(`Contract too large (${byteCount} bytes). EVM limit is 24,576 bytes.`);
+      log(`Compiled ✓ — ${byteCount} bytes`, 'ok');
     }
 
-    // ── Step 1: collect platform fee ──────────────────────────────────
+    // ── Step 2: simulate deployment (dry run, no gas spent) ───────────
+    log('Simulating deployment…', 'info');
+    btn.textContent = 'Simulating…';
+
+    const factory = new ethers.ContractFactory(abi, bytecode, signer);
+    try {
+      const deployTx = await factory.getDeployTransaction(...args);
+      await provider.call({ ...deployTx, from: walletAddr });
+      log('Simulation passed ✓', 'ok');
+    } catch (simErr) {
+      throw new Error('Simulation failed — ' + (simErr.reason || simErr.message || 'transaction would revert'));
+    }
+
+    // ── Step 3: collect platform fee ───────────────────────────────────
     log('Sending platform fee…', 'info');
+    btn.textContent = 'Sending fee…';
 
-    const feeTx = await signer.sendTransaction({
-      to:    FEE_RECIPIENT,
-      value: ethers.parseEther(FEE_ETH),
-    });
-    log('Fee tx: ' + feeTx.hash);
-    await feeTx.wait(1);
-    log('Fee confirmed ✓', 'ok');
+    try {
+      const feeTx = await signer.sendTransaction({
+        to:    FEE_RECIPIENT,
+        value: ethers.parseEther(FEE_ETH),
+      });
+      log('Fee tx: ' + feeTx.hash);
+      await feeTx.wait(1);
+      log('Fee confirmed ✓', 'ok');
+    } catch (feeErr) {
+      throw new Error('Fee transaction failed — ' + (feeErr.reason || feeErr.message || 'check your wallet balance'));
+    }
 
-    // ── Step 2: deploy — gas is automatic, Base handles it ────────────
-    log('Sending deployment transaction…', 'info');
+    // ── Step 4: deploy — gas automatic, Base decides ───────────────────
+    log('Deploying contract…', 'info');
+    btn.textContent = 'Deploying…';
 
-    const factory  = new ethers.ContractFactory(abi, bytecode, signer);
-    const contract = await factory.deploy(...args); // no gas override — chain decides
+    const contract = await factory.deploy(...args);
     log('Deploy tx: ' + contract.deploymentTransaction().hash);
     log('Waiting for confirmation…');
 
